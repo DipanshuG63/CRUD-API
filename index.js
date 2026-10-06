@@ -15,6 +15,11 @@ const SEED_TASKS = [
 
 const tasks = SEED_TASKS.map((task) => ({ ...task }));
 
+function resetTasks() {
+  tasks.length = 0;
+  tasks.push(...SEED_TASKS.map((task) => ({ ...task })));
+}
+
 // Stage 1: root and health endpoints
 app.get('/', (req, res) => {
   res.json({ name: 'Task API', version: '1.0', endpoints: ['/tasks'] });
@@ -26,7 +31,33 @@ app.get('/health', (req, res) => {
 
 // Stage 2: Read - list tasks
 app.get('/tasks', (req, res) => {
-  res.status(200).json(tasks);
+  let result = [...tasks];
+
+  // Optional extra: GET /tasks?done=true|false
+  if (req.query.done !== undefined) {
+    if (req.query.done !== 'true' && req.query.done !== 'false') {
+      return res.status(400).json({ error: 'done must be true or false' });
+    }
+
+    const done = req.query.done === 'true';
+    result = result.filter((task) => task.done === done);
+  }
+
+  // Optional extra: GET /tasks?search=milk
+  if (req.query.search !== undefined) {
+    const search = String(req.query.search).trim();
+
+    if (search === '') {
+      return res.status(400).json({ error: 'search must not be empty' });
+    }
+
+    const lowerSearch = search.toLowerCase();
+    result = result.filter((task) =>
+      task.title.toLowerCase().includes(lowerSearch)
+    );
+  }
+
+  res.status(200).json(result);
 });
 
 // Stage 2: Read - single task
@@ -119,6 +150,23 @@ app.delete('/tasks/:id', (req, res) => {
 
   tasks.splice(index, 1);
   res.status(204).send();
+});
+
+// Optional extra: statistics
+app.get('/stats', (req, res) => {
+  const done = tasks.filter((task) => task.done).length;
+
+  res.status(200).json({
+    total: tasks.length,
+    done,
+    open: tasks.length - done,
+  });
+});
+
+// Optional extra: restore seed data
+app.post('/reset', (req, res) => {
+  resetTasks();
+  res.status(200).json(tasks);
 });
 
 app.listen(port, () => {
