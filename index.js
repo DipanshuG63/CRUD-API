@@ -1,5 +1,9 @@
 // Task API - Week 2 CRUD assignment
+// In-memory CRUD API for a to-do list.
+
 const express = require('express');
+const swaggerUi = require('swagger-ui-express');
+const openapi = require('./openapi.json');
 
 const app = express();
 const port = 3000;
@@ -20,9 +24,16 @@ function resetTasks() {
   tasks.push(...SEED_TASKS.map((task) => ({ ...task })));
 }
 
-// Stage 1: root and health endpoints
+// Swagger UI
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapi));
+
+// Stage 0-1: root and health endpoints
 app.get('/', (req, res) => {
-  res.json({ name: 'Task API', version: '1.0', endpoints: ['/tasks'] });
+  res.json({
+    name: 'Task API',
+    version: '1.0',
+    endpoints: ['/tasks', '/tasks/:id', '/stats', '/reset', '/health', '/docs'],
+  });
 });
 
 app.get('/health', (req, res) => {
