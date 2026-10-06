@@ -66,6 +66,61 @@ app.post('/tasks', (req, res) => {
   res.status(201).json(task);
 });
 
+// Stage 4: Update
+app.put('/tasks/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const task = tasks.find((item) => item.id === id);
+
+  if (!task) {
+    return res.status(404).json({ error: `Task ${id} not found` });
+  }
+
+  const body = req.body;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return res.status(400).json({
+      error: 'request body must include title and/or done',
+    });
+  }
+
+  const hasTitle = Object.prototype.hasOwnProperty.call(body, 'title');
+  const hasDone = Object.prototype.hasOwnProperty.call(body, 'done');
+
+  if (!hasTitle && !hasDone) {
+    return res.status(400).json({
+      error: 'request body must include title and/or done',
+    });
+  }
+
+  if (hasTitle) {
+    if (typeof body.title !== 'string' || body.title.trim() === '') {
+      return res.status(400).json({ error: 'title cannot be empty' });
+    }
+    task.title = body.title.trim();
+  }
+
+  if (hasDone) {
+    if (typeof body.done !== 'boolean') {
+      return res.status(400).json({ error: 'done must be a boolean' });
+    }
+    task.done = body.done;
+  }
+
+  res.status(200).json(task);
+});
+
+// Stage 4: Delete
+app.delete('/tasks/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const index = tasks.findIndex((item) => item.id === id);
+
+  if (index === -1) {
+    return res.status(404).json({ error: `Task ${id} not found` });
+  }
+
+  tasks.splice(index, 1);
+  res.status(204).send();
+});
+
 app.listen(port, () => {
   console.log(`CRUD API listening on http://localhost:${port}`);
 });
