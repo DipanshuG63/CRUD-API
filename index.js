@@ -41,6 +41,31 @@ app.get('/tasks/:id', (req, res) => {
   res.status(200).json(task);
 });
 
+// Stage 3: Create
+app.post('/tasks', (req, res) => {
+  const { title } = req.body ?? {};
+
+  if (typeof title !== 'string' || title.trim() === '') {
+    return res.status(400).json({
+      error: 'title is required and cannot be empty',
+    });
+  }
+
+  const nextId =
+    tasks.length === 0
+      ? 1
+      : Math.max(...tasks.map((task) => task.id)) + 1;
+
+  const task = {
+    id: nextId,
+    title: title.trim(),
+    done: false,
+  };
+
+  tasks.push(task);
+  res.status(201).json(task);
+});
+
 app.listen(port, () => {
   console.log(`CRUD API listening on http://localhost:${port}`);
 });
