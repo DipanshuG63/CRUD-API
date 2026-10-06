@@ -1,0 +1,24 @@
+{
+  "name": "internship-crud-api",
+  "version": "1.0.0",
+  "description": "CRUD API for internship",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DipanshuG63/CRUD-API.git"
+  },
+  "author": "DipanshuG63",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/DipanshuG63/CRUD-API/issues"
+  },
+  "homepage": "https://github.com/DipanshuG63/CRUD-API#readme",
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
