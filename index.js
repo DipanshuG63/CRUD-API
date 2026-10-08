@@ -1,10 +1,10 @@
-// Task API - Week 2 CRUD assignment
-// In-memory CRUD API for a to-do list.
+// Task API - Week 3 assignment (A2)
+// Same CRUD API as Week 2, but tasks are now stored in SQLite (tasks.db).
 
 const express = require('express');
+const swaggerUi = require('swagger-ui-express');
 const Database = require('better-sqlite3');
 const path = require('path');
-const swaggerUi = require('swagger-ui-express');
 const openapi = require('./openapi.json');
 
 const app = express();
@@ -12,22 +12,11 @@ const port = 3000;
 
 app.use(express.json());
 
-// In-memory data: intentionally lost when the server restarts.
+/* ------------------------------------------------------------------ */
+/* Storage layer: SQLite                                               */
+/* ------------------------------------------------------------------ */
+
 const SEED_TASKS = [
-  { id: 1, title: 'Buy groceries', done: false },
-  { id: 2, title: 'Walk the dog', done: true },
-  { id: 3, title: 'Read a book', done: false },
-];
-
-const tasks = SEED_TASKS.map((task) => ({ ...task }));
-
-function resetTasks() {
-  tasks.length = 0;
-  tasks.push(...SEED_TASKS.map((task) => ({ ...task })));
-}
-
-// Stage 0: SQLite database, table and seed
-const DB_SEED_TASKS = [
   { title: 'Buy groceries', done: 0 },
   { title: 'Walk the dog', done: 1 },
   { title: 'Read a book', done: 0 },
@@ -51,14 +40,14 @@ const insertTask = db.prepare('INSERT INTO tasks (title, done) VALUES (?, ?)');
 const seedIfEmpty = db.transaction(() => {
   const { count } = db.prepare('SELECT COUNT(*) AS count FROM tasks').get();
   if (count === 0) {
-    for (const t of DB_SEED_TASKS) insertTask.run(t.title, t.done);
+    for (const t of SEED_TASKS) insertTask.run(t.title, t.done);
   }
 });
 seedIfEmpty();
 
-const resetDb = db.transaction(() => {
+const resetTasks = db.transaction(() => {
   db.prepare('DELETE FROM tasks').run();
-  for (const t of DB_SEED_TASKS) insertTask.run(t.title, t.done);
+  for (const t of SEED_TASKS) insertTask.run(t.title, t.done);
 });
 
 // SQLite stores booleans as 0/1; the API returns true/false like before.
@@ -71,10 +60,13 @@ function getRow(id) {
   return db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
 }
 
+/* ------------------------------------------------------------------ */
+/* Routes (unchanged behaviour)                                        */
+/* ------------------------------------------------------------------ */
+
 // Swagger UI
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapi));
 
-// Stage 0-1: root and health endpoints
 app.get('/', (req, res) => {
   res.json({
     name: 'Task API',
@@ -87,7 +79,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Stage 1: Read - list tasks (with SQL-based filter + search extras)
+// Read - list tasks (with SQL-based filter + search extras)
 app.get('/tasks', (req, res) => {
   const where = [];
   const params = [];
@@ -130,7 +122,7 @@ app.get('/tasks/:id', (req, res) => {
   res.status(200).json(toTask(row));
 });
 
-// Stage 2: Create
+// Create
 app.post('/tasks', (req, res) => {
   const { title } = req.body ?? {};
 
@@ -145,12 +137,12 @@ app.post('/tasks', (req, res) => {
   res.status(201).json(toTask(row));
 });
 
-// Stage 4: Update
+// Update
 app.put('/tasks/:id', (req, res) => {
   const id = Number(req.params.id);
-  const task = tasks.find((item) => item.id === id);
+  const row = getRow(id);
 
-  if (!task) {
+  if (!row) {
     return res.status(404).json({ error: `Task ${id} not found` });
   }
 
@@ -170,51 +162,63 @@ app.put('/tasks/:id', (req, res) => {
     });
   }
 
+  let title = row.title;
+  let done = row.done;
+
   if (hasTitle) {
     if (typeof body.title !== 'string' || body.title.trim() === '') {
       return res.status(400).json({ error: 'title cannot be empty' });
     }
-    task.title = body.title.trim();
+    title = body.title.trim();
   }
 
   if (hasDone) {
     if (typeof body.done !== 'boolean') {
       return res.status(400).json({ error: 'done must be a boolean' });
     }
-    task.done = body.done;
+    done = body.done ? 1 : 0;
   }
 
-  res.status(200).json(task);
+  db.prepare('UPDATE tasks SET title = ?, done = ? WHERE id = ?').run(title, done, id);
+  res.status(200).json(toTask({ id, title, done }));
 });
 
-// Stage 4: Delete
+// Delete
 app.delete('/tasks/:id', (req, res) => {
   const id = Number(req.params.id);
-  const index = tasks.findIndex((item) => item.id === id);
+  const info = Number.isInteger(id)
+    ? db.prepare('DELETE FROM tasks WHERE id = ?').run(id)
+    : { changes: 0 };
 
-  if (index === -1) {
+  if (info.changes === 0) {
     return res.status(404).json({ error: `Task ${id} not found` });
   }
 
-  tasks.splice(index, 1);
   res.status(204).send();
 });
 
-// Optional extra: statistics
+// Statistics - computed in SQL
 app.get('/stats', (req, res) => {
-  const done = tasks.filter((task) => task.done).length;
+  const stats = db
+    .prepare(
+      `SELECT COUNT(*) AS total,
+              COALESCE(SUM(done), 0) AS done
+       FROM tasks`
+    )
+    .get();
 
   res.status(200).json({
-    total: tasks.length,
-    done,
-    open: tasks.length - done,
+    total: stats.total,
+    done: stats.done,
+    open: stats.total - stats.done,
   });
 });
 
-// Optional extra: restore seed data
+// Restore seed data
 app.post('/reset', (req, res) => {
   resetTasks();
-  res.status(200).json(tasks);
+  const rows = db.prepare('SELECT * FROM tasks ORDER BY id').all();
+  res.status(200).json(rows.map(toTask));
 });
 
 app.listen(port, () => {
