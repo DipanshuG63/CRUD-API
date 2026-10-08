@@ -87,47 +87,47 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Stage 2: Read - list tasks
+// Stage 1: Read - list tasks (with SQL-based filter + search extras)
 app.get('/tasks', (req, res) => {
-  let result = [...tasks];
+  const where = [];
+  const params = [];
 
-  // Optional extra: GET /tasks?done=true|false
   if (req.query.done !== undefined) {
     if (req.query.done !== 'true' && req.query.done !== 'false') {
       return res.status(400).json({ error: 'done must be true or false' });
     }
-
-    const done = req.query.done === 'true';
-    result = result.filter((task) => task.done === done);
+    where.push('done = ?');
+    params.push(req.query.done === 'true' ? 1 : 0);
   }
 
-  // Optional extra: GET /tasks?search=milk
   if (req.query.search !== undefined) {
     const search = String(req.query.search).trim();
-
     if (search === '') {
       return res.status(400).json({ error: 'search must not be empty' });
     }
-
-    const lowerSearch = search.toLowerCase();
-    result = result.filter((task) =>
-      task.title.toLowerCase().includes(lowerSearch)
-    );
+    const escaped = search.replace(/[\\%_]/g, (c) => '\\' + c);
+    where.push("title LIKE ? ESCAPE '\\'");
+    params.push(`%${escaped}%`);
   }
 
-  res.status(200).json(result);
+  const sql =
+    'SELECT * FROM tasks' +
+    (where.length ? ' WHERE ' + where.join(' AND ') : '') +
+    ' ORDER BY id';
+
+  res.status(200).json(db.prepare(sql).all(...params).map(toTask));
 });
 
-// Stage 2: Read - single task
+// Read - single task
 app.get('/tasks/:id', (req, res) => {
   const id = Number(req.params.id);
-  const task = tasks.find((item) => item.id === id);
+  const row = getRow(id);
 
-  if (!task) {
+  if (!row) {
     return res.status(404).json({ error: `Task ${id} not found` });
   }
 
-  res.status(200).json(task);
+  res.status(200).json(toTask(row));
 });
 
 // Stage 3: Create
