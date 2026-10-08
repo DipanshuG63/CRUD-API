@@ -130,7 +130,7 @@ app.get('/tasks/:id', (req, res) => {
   res.status(200).json(toTask(row));
 });
 
-// Stage 3: Create
+// Stage 2: Create
 app.post('/tasks', (req, res) => {
   const { title } = req.body ?? {};
 
@@ -140,19 +140,9 @@ app.post('/tasks', (req, res) => {
     });
   }
 
-  const nextId =
-    tasks.length === 0
-      ? 1
-      : Math.max(...tasks.map((task) => task.id)) + 1;
-
-  const task = {
-    id: nextId,
-    title: title.trim(),
-    done: false,
-  };
-
-  tasks.push(task);
-  res.status(201).json(task);
+  const info = insertTask.run(title.trim(), 0);
+  const row = db.prepare('SELECT * FROM tasks WHERE id = ?').get(info.lastInsertRowid);
+  res.status(201).json(toTask(row));
 });
 
 // Stage 4: Update
