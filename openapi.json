@@ -3,7 +3,7 @@
   "info": {
     "title": "Task API",
     "version": "1.0",
-    "description": "In-memory CRUD API for tasks."
+    "description": "CRUD API for tasks, stored in SQLite."
   },
   "servers": [
     {

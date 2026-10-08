@@ -1,8 +1,6 @@
-# Task API — FlyRank Internship Week 2 Assignment A1
+# Task API — FlyRank Internship Week 3 Assignment A2
 
-A small **Node.js + Express CRUD API** for managing a to-do list. The API supports Create, Read, Update, and Delete operations using an in-memory task list, and provides interactive Swagger UI documentation.
-
-This project follows the Week 2 assignment requirements: HTTP methods, CRUD, status codes, Swagger UI, curl testing, and Git/GitHub publishing.
+A small **Node.js + Express CRUD API** for managing a to-do list. In Week 2 tasks lived in an in-memory array; in Week 3 (this version) they are stored in a **SQLite database** (`tasks.db`), so data survives restarts. The endpoints and responses are identical to Week 2.
 
 ## Tech stack
 
@@ -10,7 +8,7 @@ This project follows the Week 2 assignment requirements: HTTP methods, CRUD, sta
 - Express
 - Swagger UI (`swagger-ui-express`)
 - OpenAPI 3.0.3
-- In-memory JavaScript array (no database)
+- SQLite via `better-sqlite3` (synchronous, parameterized queries)
 
 ## Getting started
 
@@ -44,9 +42,36 @@ Swagger UI:
 http://localhost:3000/docs
 ```
 
+## Why SQLite?
+
+- **Single file** — the whole database is `tasks.db`.
+- **Zero setup** — no server to install; the file and the `tasks` table are created automatically on first run.
+- **Survives restarts** — data is on disk, not in memory.
+
+The database file lives next to `index.js` and is git-ignored, so every fresh clone starts clean with the 3 seed tasks.
+
+**Run command** (works on a clean clone):
+
+```bash
+npm install && npm start
+```
+
+## Database schema
+
+```sql
+CREATE TABLE IF NOT EXISTS tasks (
+  id    INTEGER PRIMARY KEY,
+  title TEXT NOT NULL,
+  done  INTEGER NOT NULL DEFAULT 0   -- 0 = false, 1 = true
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_done ON tasks(done);
+```
+
+All queries use `?` placeholders (parameterized), e.g. `SELECT * FROM tasks WHERE id = ?`, `INSERT INTO tasks (title, done) VALUES (?, ?)`, `UPDATE tasks SET title = ?, done = ? WHERE id = ?`, `DELETE FROM tasks WHERE id = ?`.
+
 ## Seed data
 
-The server starts with three tasks:
+On first run (table empty) the server seeds three tasks, inside a transaction:
 
 ```json
 [
@@ -56,7 +81,7 @@ The server starts with three tasks:
 ]
 ```
 
-Data is intentionally stored only in memory. Restarting the server resets the data to the three seed tasks. This is expected for this assignment; a database is introduced in the following week.
+The seed runs only when the table is empty (`SELECT COUNT(*)` is 0), so restarting never duplicates the examples. Wrapping the three inserts in a **transaction** makes seeding all-or-nothing — a crash halfway can't leave a half-seeded table.
 
 ## API endpoints
 
@@ -155,7 +180,7 @@ Keep-Alive: timeout=5
 
 ## Optional extras
 
-The assignment allows optional extras. This implementation includes three:
+Optional extras, now done in SQL (`WHERE done = ?`, `WHERE title LIKE ?`, `SELECT COUNT(*)`):
 
 ### Filter by completion
 
@@ -193,9 +218,65 @@ Example:
 curl -i -X POST http://localhost:3000/reset
 ```
 
-## Mortality experiment
+## Persistence proof
 
-I created a few tasks, restarted the server, and called `GET /tasks`. Only the 3 seed tasks came back. The tasks live in a JavaScript array in memory, so they vanish when the process stops. That is why a database is needed in Week 3.
+I created tasks, stopped the server, started it again, and `GET /tasks` still returned them — the first time the data survived a restart. I also opened `tasks.db` in DB Browser for SQLite and saw the same rows the API returns.
+
+![DB Browser showing tasks.db](docs/db-browser.png)
+
+## Stage 4 — SQL by hand
+
+I opened `tasks.db` in DB Browser for SQLite and ran these queries by hand in the *Execute SQL* tab.
+
+**1. List completed tasks** — returned one row, `Walk the dog` (`done = 1`):
+
+```sql
+SELECT * FROM tasks WHERE done = 1;
+```
+
+![Query 1 - completed tasks](docs/Query_1.png)
+
+**2. List every task** — returned all 3 seed tasks:
+
+```sql
+SELECT * FROM tasks;
+```
+
+![Query 2 - all tasks](docs/Query_2.png)
+
+**3. Count tasks** — returned `3`:
+
+```sql
+SELECT COUNT(*) FROM tasks;
+```
+
+![Query 3 - count](docs/Query_3.png)
+
+**4. Mark every task completed** — `3 rows affected`:
+
+```sql
+UPDATE tasks SET done = 1;
+```
+
+![Query 4 - update](docs/Query_4.png)
+
+After this (and **Write Changes**), `GET /tasks` showed every task with `"done": true` without restarting the server. The API and DB Browser read the same file, so there is one source of truth and no syncing.
+
+**5. Delete completed tasks** — `3 rows affected` (all tasks were completed after query 4, so the table became empty; `POST /reset` restores the seed data):
+
+```sql
+DELETE FROM tasks WHERE done = 1;
+```
+
+![Query 5 - delete](docs/Query_5.png)
+
+## Why identical tests passing proves storage is an implementation detail
+
+The same curl commands from Week 2 (below) pass unchanged against the SQLite version: same status codes, same JSON. Clients only depend on the API contract, not on where data is kept, so swapping memory for SQLite changed nothing they can observe.
+
+## What is an index?
+
+`idx_tasks_done` is an index on `done`; it lets SQLite find rows matching `WHERE done = ?` without scanning the whole table (like a book's index).
 
 ## Swagger UI
 
@@ -243,9 +324,10 @@ Expected successful status codes are `201` for create, `200` for reads/update, a
 
 ```text
 .
-├── index.js          # Express server and CRUD routes
+├── index.js          # Express server, SQLite storage, CRUD routes
 ├── openapi.json      # OpenAPI specification used by Swagger UI
-├── docs/             # Swagger UI screenshots
+├── tasks.db          # SQLite database (auto-created, git-ignored)
+├── docs/             # Screenshots (Swagger UI, DB Browser)
 ├── package.json      # Project metadata and npm scripts
 ├── package-lock.json # Locked dependency versions
 ├── .gitignore
@@ -254,16 +336,10 @@ Expected successful status codes are `201` for create, `200` for reads/update, a
 
 ## Assignment completion checklist
 
-- [x] Stage 0 — server starts on localhost:3000
-- [x] Stage 1 — `GET /` and `GET /health`
-- [x] Stage 2 — `GET /tasks` and `GET /tasks/:id` with 404 handling
-- [x] Stage 3 — `POST /tasks` with validation and 201 response
-- [x] Stage 4 — `PUT /tasks/:id` and `DELETE /tasks/:id`
-- [x] Correct 200 / 201 / 204 / 400 / 404 status codes
-- [x] In-memory storage; no database or files used for task data
-- [x] Stage 5 — Swagger UI at `/docs`
-- [x] OpenAPI specification in `openapi.json`
-- [x] Optional filtering, search, statistics, and reset extras
-- [x] Stage 6 — create/push a public GitHub repository
-- [x] Stage 6 — make at least 6 meaningful commits, one for each stage
-- [x] Stage 6 — add the real Swagger screenshot to the README
+- [x] Stage 0 — `tasks.db` + `tasks` table created automatically, seeded once
+- [x] Stage 1 — `GET /tasks` and `GET /tasks/:id` read from SQLite
+- [x] Stage 2 — `POST /tasks` uses `INSERT`
+- [x] Stage 3 — `PUT` / `DELETE` use `UPDATE` / `DELETE`
+- [x] Stage 4 — explored SQL in DB Browser
+- [x] Stage 5 — README, screenshot, public repo
+- [x] Extras: SQL search/filter/stats, index, transaction

@@ -2,6 +2,8 @@
 // In-memory CRUD API for a to-do list.
 
 const express = require('express');
+const Database = require('better-sqlite3');
+const path = require('path');
 const swaggerUi = require('swagger-ui-express');
 const openapi = require('./openapi.json');
 
@@ -22,6 +24,51 @@ const tasks = SEED_TASKS.map((task) => ({ ...task }));
 function resetTasks() {
   tasks.length = 0;
   tasks.push(...SEED_TASKS.map((task) => ({ ...task })));
+}
+
+// Stage 0: SQLite database, table and seed
+const DB_SEED_TASKS = [
+  { title: 'Buy groceries', done: 0 },
+  { title: 'Walk the dog', done: 1 },
+  { title: 'Read a book', done: 0 },
+];
+
+// Stage 0: opening a missing file creates it.
+const db = new Database(path.join(__dirname, 'tasks.db'));
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS tasks (
+    id    INTEGER PRIMARY KEY,
+    title TEXT NOT NULL,
+    done  INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_tasks_done ON tasks(done);
+`);
+
+const insertTask = db.prepare('INSERT INTO tasks (title, done) VALUES (?, ?)');
+
+// Seed only when empty; transaction = all three inserts or none.
+const seedIfEmpty = db.transaction(() => {
+  const { count } = db.prepare('SELECT COUNT(*) AS count FROM tasks').get();
+  if (count === 0) {
+    for (const t of DB_SEED_TASKS) insertTask.run(t.title, t.done);
+  }
+});
+seedIfEmpty();
+
+const resetDb = db.transaction(() => {
+  db.prepare('DELETE FROM tasks').run();
+  for (const t of DB_SEED_TASKS) insertTask.run(t.title, t.done);
+});
+
+// SQLite stores booleans as 0/1; the API returns true/false like before.
+function toTask(row) {
+  return { id: row.id, title: row.title, done: row.done === 1 };
+}
+
+function getRow(id) {
+  if (!Number.isInteger(id)) return undefined;
+  return db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
 }
 
 // Swagger UI

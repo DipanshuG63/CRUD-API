@@ -141,3 +141,13 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# SQLite database
+tasks.db
+tasks.db-journal
+tasks.db-wal
+tasks.db-shm
+
+# commit helper (not part of the project)
+stages/
+commit-stages.bat
