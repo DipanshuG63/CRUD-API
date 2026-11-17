@@ -5,10 +5,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,7 +20,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - name: Validate Swagger schema and server startup
+      - name: Validate Swagger schema and API startup
         env:
           SUPABASE_URL: https://example.supabase.co
           SUPABASE_KEY: public-ci-placeholder-key
@@ -33,3 +36,24 @@ jobs:
           curl --fail-with-body http://localhost:3000/public/info
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/protected/profile)" = 401
           curl -fsS http://localhost:3000/docs/ >/dev/null
+      - name: Capture genuine full-sized Swagger UI screenshots
+        if: github.event_name != 'pull_request'
+        env:
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_KEY: public-ci-placeholder-key
+        run: |
+          command -v google-chrome || command -v chromium || command -v chromium-browser
+          node scripts/capture-swagger.js
+          file docs/swagger-auth.png docs/swagger-profile.png
+      - name: Save fresh screenshots to the repository
+        if: github.event_name != 'pull_request'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/swagger-auth.png docs/swagger-profile.png
+          if ! git diff --cached --quiet; then
+            git commit -m "docs: capture real Swagger UI padlock screenshots [skip ci]"
+            git push origin HEAD:main
+          else
+            echo "Screenshots already current."
+          fi
