@@ -311,27 +311,55 @@ app.get('/public/info', (req, res) => {
   res.status(200).json({ message: 'Welcome stranger! This info is public.' });
 });
 
-// ---- Stage 3: protected route with real token verification ----------
+// ---- Stage 4: reusable auth middleware ---------------------------------
 
-app.get('/protected/profile', async (req, res) => {
-  const header = req.headers.authorization ?? '';
-  const match = /^Bearer\s+(\S+)$/i.exec(header);
+// Verifies the bearer token with Supabase, then attaches the user to req.user.
+async function requireAuth(req, res, next) {
+  const match = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? '');
 
   if (!match) {
     return res.status(401).json({ error: 'Access token required' });
   }
 
-  const { data, error } = await supabase.auth.getUser(match[1]);
+  const token = match[1];
 
-  if (error || !data?.user) {
-    if (error && isUpstreamError(error)) {
-      return res.status(502).json({ error: 'Auth service unavailable' });
+  try {
+    const { data, error } = await supabase.auth.getUser(token);
+
+    if (error || !data?.user) {
+      if (error && isUpstreamError(error)) {
+        return res.status(502).json({ error: 'Auth service unavailable' });
+      }
+      return res.status(401).json({ error: 'Invalid or expired token' });
     }
-    return res.status(401).json({ error: 'Invalid or expired token' });
+
+    req.user = data.user;
+    req.token = token;
+    next();
+  } catch (err) {
+    res.status(502).json({ error: 'Auth service unavailable' });
+  }
+}
+
+app.get('/protected/profile', requireAuth, (req, res) => {
+  const { id, email, created_at } = req.user;
+  res.status(200).json({ id, email, created_at });
+});
+
+// Second protected route: same middleware, no new auth code.
+app.get('/protected/dashboard', requireAuth, (req, res) => {
+  res.status(200).json({ message: `Welcome to your dashboard, ${req.user.email}` });
+});
+
+app.post('/auth/logout', requireAuth, async (req, res) => {
+  // admin.signOut(jwt) revokes the session that belongs to this user's token.
+  const { error } = await supabase.auth.admin.signOut(req.token);
+
+  if (error) {
+    return res.status(502).json({ error: 'Auth service unavailable' });
   }
 
-  const { id, email, created_at } = data.user;
-  res.status(200).json({ id, email, created_at });
+  res.status(204).send();
 });
 
 
