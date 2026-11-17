@@ -97,7 +97,7 @@ GitHub Actions workflow: [W4 Auth API tests](.github/workflows/w4-auth-tests.yml
 
 ![Swagger UI showing the protected profile route with a bearer-auth padlock](docs/swagger-auth.png)
 
-The screenshot demonstrates the Swagger UI **protected-route padlock**. It is deliberately cropped to avoid publishing a real JWT. An authorized `200` response must be confirmed in the live smoke test; the screenshot alone is not evidence of a successful login.
+The full-size image above was **captured directly from the running Swagger UI in Chrome by GitHub Actions** using public placeholder configuration. It shows the **Authorize** control, signup/login/logout, public routes, and the locked profile/dashboard padlocks. It contains **no JWT or private credentials**. This is documentation evidence, not a claim that the browser authenticated successfully; the separate local real-Supabase smoke test demonstrated successful login and protected access. See the [automated CI workflow](.github/workflows/w4-auth-tests.yml) for reproducible capture.
 
 ### 7. GitHub publishing & secret checks
 
@@ -150,7 +150,8 @@ openapi.json                   OpenAPI definition with HTTP bearer JWT security
 test/auth.test.js              Offline mocked auth tests
 test/live-smoke.js             Real Supabase end-to-end checks
 scripts/capture-swagger.js     Browser screenshot generator
-docs/swagger-auth.png          Token-free Swagger bearer padlock screenshot
+docs/swagger-auth.png          Full-size real-browser Swagger overview (CI captured; no tokens)
+docs/swagger-profile.png       Protected profile operation detail (CI captured)
 .github/workflows/             GitHub Actions automated verification
 package.json                   Dependencies and npm commands
 reset-password.html             Local password-recovery webpage (optional)
