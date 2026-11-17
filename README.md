@@ -31,7 +31,7 @@ SUPABASE_KEY=your_anon_key
 PORT=3000
 ```
 
-`.env` is git-ignored and was never committed; only `.env.example` is in the repo.
+`.env` is git-ignored. Check the whole Git history for any accidentally leaked keys before submitting.
 
 ### Run command
 
@@ -82,7 +82,7 @@ curl -i http://localhost:3000/protected/profile \
 
 Open `http://localhost:3000/docs`, click **Authorize**, paste the `access_token` from `/auth/login`, then use **Try it out** on `GET /protected/profile`. The padlock icons come from the `bearerAuth` entry in `securitySchemes` in `openapi.json`.
 
-![Swagger with Authorize padlock](docs/swagger-auth.png)
+**W4 Swagger screenshot:** Run `npm run capture:swagger` after installing dependencies to generate the *real* `docs/swagger-auth.png` with bearer padlock icons. Add the generated screenshot to GitHub before final submission.
 
 ---
 
@@ -424,3 +424,36 @@ Expected successful status codes are `201` for create, `200` for reads/update, a
 - [x] Extras: SQL search/filter/stats, index, transaction
 
 - [x] A4 — Supabase signup/login/logout, JWT verification, reusable auth middleware, Swagger bearer auth
+
+
+## Week 4: security fixes and final verification
+
+The auth server creates a separate Supabase SDK client per request so one user session is never shared across calls. Login returns an access and refresh token. The `requireAuth` middleware checks the bearer JWT using Supabase `getUser(token)` and protects profile, dashboard, and logout. User-scoped logout calls Supabase `POST /auth/v1/logout?scope=local` with the verified JWT (no privileged service-role key). Logout revokes the affected refresh-token session, but existing access JWTs may remain valid until expiration. Clients must discard both tokens.
+
+With Node.js **22+**, run:
+
+```bash
+npm ci
+npm test
+npm start
+```
+
+Set `SUPABASE_URL` and the **public anon/publishable key** in a private `.env` copied from `.env.example`, then run the real checks:
+
+```bash
+npm run test:smoke
+npm run capture:swagger
+```
+
+`npm test` executes mocked route tests without connecting to Supabase. `npm run test:smoke` creates a test account in **your own Supabase project**, verifies signup, login, protected reads, rejected tampered tokens, logout, and Swagger; turn off Supabase *Confirm email* for this practice exercise. `npm run capture:swagger` requires Chrome/Edge/Chromium; it writes `docs/swagger-auth.png`. Add that actual image to the repo; the older Week 3 screenshots are not bearer-auth proof.
+
+### W4 status
+
+- [x] Five required endpoints, a second protected endpoint, JWT middleware, bearer Swagger setup
+- [x] Fixed user-scoped logout, validation, and server error responses
+- [x] Automated mocked tests
+- [ ] Confirm live end-to-end Supabase smoke test using your private project configuration
+- [ ] Commit actual Swagger bearer-auth screenshot after capture
+- [ ] Review repository history for leaked secrets
+
+**Never commit `.env`, tokens, passwords, or a Supabase service-role key.**
