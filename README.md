@@ -1,6 +1,6 @@
-# Task API — FlyRank Internship Week 3 Assignment A2
+# Task API — FlyRank Internship Week 4 Assignment A4 (Auth)
 
-A small **Node.js + Express CRUD API** for managing a to-do list. In Week 2 tasks lived in an in-memory array; in Week 3 (this version) they are stored in a **SQLite database** (`tasks.db`), so data survives restarts. The endpoints and responses are identical to Week 2.
+A **Node.js + Express** API with a SQLite-backed task list (Week 3) and **Supabase Auth** (Week 4): sign up, log in, log out, and routes that only answer to users holding a valid JWT. Passwords are never stored or hashed by this server — Supabase is the Identity Provider; this server only sends credentials to Supabase and verifies the tokens it returns.
 
 ## Tech stack
 
@@ -9,6 +9,84 @@ A small **Node.js + Express CRUD API** for managing a to-do list. In Week 2 task
 - Swagger UI (`swagger-ui-express`)
 - OpenAPI 3.0.3
 - SQLite via `better-sqlite3` (synchronous, parameterized queries)
+- Supabase Auth (`@supabase/supabase-js`) for accounts and JWTs
+- `dotenv` for configuration
+
+## Authentication (Week 4)
+
+### Environment setup
+
+1. Create a free project at [supabase.com](https://supabase.com).
+2. In **Project Settings → API** copy the **Project URL** and the **anon** key (never the `service_role` key).
+3. In **Authentication → Sign In / Providers → Email** turn **"Confirm email" off** (practice project only).
+4. Copy the example env file and fill it in:
+
+```bash
+cp .env.example .env      # Windows: copy .env.example .env
+```
+
+```text
+SUPABASE_URL=your_project_url
+SUPABASE_KEY=your_anon_key
+PORT=3000
+```
+
+`.env` is git-ignored and was never committed; only `.env.example` is in the repo.
+
+### Run command
+
+```bash
+npm install && npm start
+```
+
+### Auth endpoints
+
+| Method | Endpoint | Purpose | Auth needed? | Success | Errors |
+|---|---|---|---|---|---|
+| POST | `/auth/signup` | Create an account | No | 201 | 400 |
+| POST | `/auth/login` | Log in, returns JWT | No | 200 | 400, 401 |
+| POST | `/auth/logout` | End the session | **Bearer token** | 204 | 401 |
+| GET | `/protected/profile` | Private profile data | **Bearer token** | 200 | 401 |
+| GET | `/protected/dashboard` | Second protected route | **Bearer token** | 200 | 401 |
+| GET | `/public/info` | Open data | No | 200 | — |
+
+Protected routes read `Authorization: Bearer <token>`. A missing or malformed header returns `401 {"error":"Access token required"}`; an expired, tampered or invalid token returns `401 {"error":"Invalid or expired token"}`. The check is one reusable middleware (`requireAuth`) that calls `supabase.auth.getUser(token)` and attaches the verified user to `req.user`; it protects `/protected/profile`, `/protected/dashboard` and `/auth/logout`.
+
+### Try it with curl
+
+```bash
+# Sign up (201) - missing password gives 400
+curl -i -X POST http://localhost:3000/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password123"}'
+
+# Log in (200) - copy the access_token from the response
+curl -i -X POST http://localhost:3000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password123"}'
+
+# Public route (200)
+curl -i http://localhost:3000/public/info
+
+# Protected route without a token (401)
+curl -i http://localhost:3000/protected/profile
+
+# Protected route with a valid token (200)
+curl -i http://localhost:3000/protected/profile \
+  -H "Authorization: Bearer <PASTE_ACCESS_TOKEN>"
+
+# Change one character of the token -> 401
+```
+
+### Swagger UI with bearer auth
+
+Open `http://localhost:3000/docs`, click **Authorize**, paste the `access_token` from `/auth/login`, then use **Try it out** on `GET /protected/profile`. The padlock icons come from the `bearerAuth` entry in `securitySchemes` in `openapi.json`.
+
+![Swagger with Authorize padlock](docs/swagger-auth.png)
+
+---
+
+# Tasks API (Weeks 2–3)
 
 ## Getting started
 
@@ -324,12 +402,13 @@ Expected successful status codes are `201` for create, `200` for reads/update, a
 
 ```text
 .
-├── index.js          # Express server, SQLite storage, CRUD routes
+├── index.js          # Express server: SQLite storage, CRUD routes, Supabase auth + middleware
 ├── openapi.json      # OpenAPI specification used by Swagger UI
 ├── tasks.db          # SQLite database (auto-created, git-ignored)
 ├── docs/             # Screenshots (Swagger UI, DB Browser)
 ├── package.json      # Project metadata and npm scripts
 ├── package-lock.json # Locked dependency versions
+├── .env.example      # Names of required env vars (real .env is git-ignored)
 ├── .gitignore
 └── README.md
 ```
@@ -343,3 +422,5 @@ Expected successful status codes are `201` for create, `200` for reads/update, a
 - [x] Stage 4 — explored SQL in DB Browser
 - [x] Stage 5 — README, screenshot, public repo
 - [x] Extras: SQL search/filter/stats, index, transaction
+
+- [x] A4 — Supabase signup/login/logout, JWT verification, reusable auth middleware, Swagger bearer auth
