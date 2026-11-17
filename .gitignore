@@ -151,3 +151,7 @@ tasks.db-shm
 # commit helper (not part of the project)
 stages/
 commit-stages.bat
+
+# A3 Docker test outputs
+persistence-id.txt
+artifacts/

@@ -1,345 +1,117 @@
-# Task API — FlyRank Internship Week 3 Assignment A2
+# A3 — Containerize Your Stack | FlyRank Backend Internship
 
-A small **Node.js + Express CRUD API** for managing a to-do list. In Week 2 tasks lived in an in-memory array; in Week 3 (this version) they are stored in a **SQLite database** (`tasks.db`), so data survives restarts. The endpoints and responses are identical to Week 2.
+**Node.js + Express + PostgreSQL + Docker Compose** task API. This is the same existing CRUD-API repository, with the A3 work published on **a3-docker-postgres**. The newer W4 authentication code remains safe on **main**.
 
-## Tech stack
+## One-command Docker startup (Windows)
 
-- Node.js
-- Express
-- Swagger UI (`swagger-ui-express`)
-- OpenAPI 3.0.3
-- SQLite via `better-sqlite3` (synchronous, parameterized queries)
+Open PowerShell in this project's folder. Make sure Docker Desktop says **Engine running**.
 
-## Getting started
+~~~powershell
+Copy-Item .env.example .env
+docker compose up --build
+~~~
 
-### 1. Install dependencies
+The first command copies the public template; the second starts **both** app and PostgreSQL. Change POSTGRES_PASSWORD in your local .env and also the matching password inside DATABASE_URL; never put real secrets in Git. A clean clone needs no local PostgreSQL installation.
 
-```bash
-npm install
-```
+- API: http://localhost:3000/tasks
+- Swagger UI: http://localhost:3000/docs
+- Health check: http://localhost:3000/health
 
-### 2. Start the API
+The app waits for Postgres, creates the tasks table automatically and inserts exactly three example tasks **only when the table is empty**. PostgreSQL saves data in the named **taskdata** Docker volume, so docker compose down and up **preserve data** (avoid docker compose down -v unless you intend to erase it).
 
-```bash
-npm start
-```
+### Local .env settings
 
-For development with automatic restart:
+| Key | Purpose |
+|---|---|
+| POSTGRES_USER | Local Postgres user |
+| POSTGRES_PASSWORD | Password for local Postgres container |
+| POSTGRES_DB | Database name |
+| DATABASE_URL | Connection string for API; must use host **db**, not localhost |
+| PORT | Published HTTP port, normally 3000 |
 
-```bash
-npm run dev
-```
+The public .env.example contains demo-only placeholders, not production credentials. The actual .env is ignored by Git and excluded from the Docker build.
 
-The API runs at:
+## CRUD endpoints
 
-```text
-http://localhost:3000
-```
-
-Swagger UI:
-
-```text
-http://localhost:3000/docs
-```
-
-## Why SQLite?
-
-- **Single file** — the whole database is `tasks.db`.
-- **Zero setup** — no server to install; the file and the `tasks` table are created automatically on first run.
-- **Survives restarts** — data is on disk, not in memory.
-
-The database file lives next to `index.js` and is git-ignored, so every fresh clone starts clean with the 3 seed tasks.
-
-**Run command** (works on a clean clone):
-
-```bash
-npm install && npm start
-```
-
-## Database schema
-
-```sql
-CREATE TABLE IF NOT EXISTS tasks (
-  id    INTEGER PRIMARY KEY,
-  title TEXT NOT NULL,
-  done  INTEGER NOT NULL DEFAULT 0   -- 0 = false, 1 = true
-);
-CREATE INDEX IF NOT EXISTS idx_tasks_done ON tasks(done);
-```
-
-All queries use `?` placeholders (parameterized), e.g. `SELECT * FROM tasks WHERE id = ?`, `INSERT INTO tasks (title, done) VALUES (?, ?)`, `UPDATE tasks SET title = ?, done = ? WHERE id = ?`, `DELETE FROM tasks WHERE id = ?`.
-
-## Seed data
-
-On first run (table empty) the server seeds three tasks, inside a transaction:
-
-```json
-[
-  { "id": 1, "title": "Buy groceries", "done": false },
-  { "id": 2, "title": "Walk the dog", "done": true },
-  { "id": 3, "title": "Read a book", "done": false }
-]
-```
-
-The seed runs only when the table is empty (`SELECT COUNT(*)` is 0), so restarting never duplicates the examples. Wrapping the three inserts in a **transaction** makes seeding all-or-nothing — a crash halfway can't leave a half-seeded table.
-
-## API endpoints
-
-| Method | Endpoint | Purpose | Success | Errors |
+| Method | Path | Meaning | Success | Errors |
 |---|---|---|---|---|
-| GET | `/` | API information | 200 | — |
-| GET | `/health` | Health check | 200 | — |
-| GET | `/tasks` | List all tasks | 200 | 400 |
-| GET | `/tasks/:id` | Get one task | 200 | 404 |
-| POST | `/tasks` | Create a task | 201 | 400 |
-| PUT | `/tasks/:id` | Update a task | 200 | 400, 404 |
-| DELETE | `/tasks/:id` | Delete a task | 204 | 404 |
-| GET | `/stats` | Task statistics (extra) | 200 | — |
-| POST | `/reset` | Restore seed data (extra) | 200 | — |
-| GET | `/docs` | Swagger UI | 200 | — |
+| GET | / | Information | 200 | — |
+| GET | /tasks | List tasks; optional done and search filters | 200 | 400 |
+| GET | /tasks/:id | Read task | 200 | 404 |
+| POST | /tasks | Create task with title | 201 | 400 |
+| PUT | /tasks/:id | Update title and/or done | 200 | 400, 404 |
+| DELETE | /tasks/:id | Delete task, empty body | 204 | 404 |
+| GET | /stats | Total, completed and open counts | 200 | — |
+| POST | /reset | Restore seeds (development extra) | 200 | — |
+| GET | /health | Ping database | 200 | 503 |
+| GET | /docs | Swagger | 200 | — |
 
-## CRUD examples
+All database queries live in **database/tasks.js** and use parameter placeholders $1, $2, etc. The same request and response shapes as the earlier SQLite API are preserved.
 
-### Read all tasks
+### Example curl -i commands
 
-```bash
-curl -i http://localhost:3000/tasks
-```
+Run in Windows PowerShell. Use curl.exe rather than the older PowerShell curl alias.
 
-### Read one task
+~~~powershell
+curl.exe -i http://localhost:3000/tasks
+curl.exe -i http://localhost:3000/tasks/999999
+curl.exe -i -X POST http://localhost:3000/tasks -H "Content-Type: application/json" -d '{"title":"Finish assignment"}'
+curl.exe -i -X PUT http://localhost:3000/tasks/4 -H "Content-Type: application/json" -d '{"done":true}'
+curl.exe -i -X DELETE http://localhost:3000/tasks/4
+~~~
 
-```bash
-curl -i http://localhost:3000/tasks/1
-```
+For update/delete, use the actual ID returned by POST; it will only be 4 on a fresh first run. Example **expected** response excerpt (headers and date vary in real runs):
 
-Unknown IDs return `404`:
-
-```bash
-curl -i http://localhost:3000/tasks/99
-```
-
-Response body:
-
-```json
-{"error":"Task 99 not found"}
-```
-
-### Create a task
-
-```bash
-curl -i -X POST http://localhost:3000/tasks \
-  -H "Content-Type: application/json" \
-  -d '{"title":"Buy milk"}'
-```
-
-The server assigns the next available ID, sets `done` to `false`, and returns `201 Created`.
-
-Invalid input such as `{}` returns `400 Bad Request`.
-
-### Update a task
-
-Update the completion state:
-
-```bash
-curl -i -X PUT http://localhost:3000/tasks/1 \
-  -H "Content-Type: application/json" \
-  -d '{"done":true}'
-```
-
-Update both fields:
-
-```bash
-curl -i -X PUT http://localhost:3000/tasks/1 \
-  -H "Content-Type: application/json" \
-  -d '{"title":"Buy oat milk","done":true}'
-```
-
-### Delete a task
-
-```bash
-curl -i -X DELETE http://localhost:3000/tasks/1
-```
-
-A successful delete returns `204 No Content` with an empty body.
-
-## Sample `curl -i` output
-
-```text
-$ curl -i http://localhost:3000/tasks/1
+~~~http
 HTTP/1.1 200 OK
-X-Powered-By: Express
 Content-Type: application/json; charset=utf-8
-Content-Length: 45
-ETag: W/"2d-Gv8HDdZD1sn+UqMseo56OTgQmek"
-Date: Tue, 06 Oct 2026 16:07:41 GMT
-Connection: keep-alive
-Keep-Alive: timeout=5
 
-{"id":1,"title":"Buy groceries","done":false}
-```
+[{"id":1,"title":"Buy groceries","done":false},{"id":2,"title":"Walk the dog","done":true},{"id":3,"title":"Read a book","done":false}]
+~~~
 
-## Optional extras
+The GitHub Actions evidence artifact includes the **real** curl -i output from the running containerized API.
 
-Optional extras, now done in SQL (`WHERE done = ?`, `WHERE title LIKE ?`, `SELECT COUNT(*)`):
+## Full automated verification / persistence
 
-### Filter by completion
+With Node.js 22+ locally, the following PowerShell commands test the full CRUD cycle and prove persistence:
 
-```bash
-curl -i "http://localhost:3000/tasks?done=true"
-```
+~~~powershell
+docker compose up -d --build
+node test/smoke.js --persist-file persistence-id.txt
+docker compose down
+docker compose up -d
+node test/smoke.js --verify-persisted (Get-Content persistence-id.txt)
+~~~
 
-### Search by title
+The smoke test checks seeded data, GET-by-ID, filtering, searching, 400/404 errors, POST/PUT/DELETE statuses, empty 204 body, and the stats route. A separate persistence assertion confirms the created row **survives both containers being removed and started again**.
 
-```bash
-curl -i "http://localhost:3000/tasks?search=milk"
-```
+To inspect the real SQL data:
 
-Search is case-insensitive. The filters can also be combined:
+~~~powershell
+docker compose exec db psql -U taskapp -d tasks -c "\dt"
+docker compose exec db psql -U taskapp -d tasks -c "SELECT id, title, done FROM tasks ORDER BY id;"
+~~~
 
-```bash
-curl -i "http://localhost:3000/tasks?done=false&search=book"
-```
+Change taskapp/tasks if you changed the local user/database. Screenshot your actual visible database result and save to docs/postgres-terminal-screenshot.png if a direct terminal screenshot is required.
 
-### Statistics
+The [A3 GitHub Actions workflow](https://github.com/DipanshuG63/CRUD-API/actions/workflows/a3-docker-smoke.yml) also starts genuine Docker/PG containers, runs smoke tests, performs down/up, checks the persisted row, and captures real SQL output plus curl -i evidence. If it succeeds it commits **docs/postgres-proof.png**, a clearly labeled **rendered visual of the actual live psql output** (not a direct desktop screenshot). GitHub Actions uploads original query output and PNG as **a3-postgres-proof**.
 
-```bash
-curl -i http://localhost:3000/stats
-```
+## Repository layout
 
-Example:
+~~~text
+server.js                    Express API routes, validation and error handling
+database/tasks.js            PostgreSQL table init, seed-once and parameterized SQL
+Dockerfile                   Container recipe for Node.js
+compose.yaml                 Two services and persistent volume
+.env.example                 Public local-only configuration template
+.gitignore / .dockerignore   Exclude secrets and unnecessary files
+openapi.json                 Swagger API specification
+test/smoke.js                CRUD + persistence smoke checks
+scripts/render_db_proof.py  Render real CI SQL output into an evidence image
+.github/workflows/           CI Docker Compose end-to-end test
+README.md                    Assignment instructions and evidence
+~~~
 
-```json
-{"total":3,"done":1,"open":2}
-```
+**Commit history:** This branch continues from the original A2 SQLite commit and adds six progressive A3 stage commits (environment, PostgreSQL migration, Dockerfile, Compose, tests and documentation). It does not replace the W4 main branch.
 
-### Reset seed data
-
-```bash
-curl -i -X POST http://localhost:3000/reset
-```
-
-## Persistence proof
-
-I created tasks, stopped the server, started it again, and `GET /tasks` still returned them — the first time the data survived a restart. I also opened `tasks.db` in DB Browser for SQLite and saw the same rows the API returns.
-
-![DB Browser showing tasks.db](docs/db-browser.png)
-
-## Stage 4 — SQL by hand
-
-I opened `tasks.db` in DB Browser for SQLite and ran these queries by hand in the *Execute SQL* tab.
-
-**1. List completed tasks** — returned one row, `Walk the dog` (`done = 1`):
-
-```sql
-SELECT * FROM tasks WHERE done = 1;
-```
-
-![Query 1 - completed tasks](docs/Query_1.png)
-
-**2. List every task** — returned all 3 seed tasks:
-
-```sql
-SELECT * FROM tasks;
-```
-
-![Query 2 - all tasks](docs/Query_2.png)
-
-**3. Count tasks** — returned `3`:
-
-```sql
-SELECT COUNT(*) FROM tasks;
-```
-
-![Query 3 - count](docs/Query_3.png)
-
-**4. Mark every task completed** — `3 rows affected`:
-
-```sql
-UPDATE tasks SET done = 1;
-```
-
-![Query 4 - update](docs/Query_4.png)
-
-After this (and **Write Changes**), `GET /tasks` showed every task with `"done": true` without restarting the server. The API and DB Browser read the same file, so there is one source of truth and no syncing.
-
-**5. Delete completed tasks** — `3 rows affected` (all tasks were completed after query 4, so the table became empty; `POST /reset` restores the seed data):
-
-```sql
-DELETE FROM tasks WHERE done = 1;
-```
-
-![Query 5 - delete](docs/Query_5.png)
-
-## Why identical tests passing proves storage is an implementation detail
-
-The same curl commands from Week 2 (below) pass unchanged against the SQLite version: same status codes, same JSON. Clients only depend on the API contract, not on where data is kept, so swapping memory for SQLite changed nothing they can observe.
-
-## What is an index?
-
-`idx_tasks_done` is an index on `done`; it lets SQLite find rows matching `WHERE done = ?` without scanning the whole table (like a book's index).
-
-## Swagger UI
-
-Open:
-
-```text
-http://localhost:3000/docs
-```
-
-Swagger UI documents the API from `openapi.json` and provides a **Try it out** button for testing the endpoints without curl.
-
-### Swagger screenshot
-
-![Swagger UI](docs/swagger.png)
-
-`POST /tasks` tested with **Try it out** (response `201 Created`):
-
-![Swagger Try it out - POST /tasks](docs/swagger-tryit.png)
-
-## Curl checkpoint
-
-The main Stage 4 CRUD checkpoint is:
-
-```bash
-# Create
-curl -i -X POST http://localhost:3000/tasks \
-  -H "Content-Type: application/json" \
-  -d '{"title":"Finish assignment"}'
-
-# Read
-curl -i http://localhost:3000/tasks
-
-# Update
-curl -i -X PUT http://localhost:3000/tasks/4 \
-  -H "Content-Type: application/json" \
-  -d '{"done":true}'
-
-# Delete
-curl -i -X DELETE http://localhost:3000/tasks/4
-```
-
-Expected successful status codes are `201` for create, `200` for reads/update, and `204` for delete. Unknown task IDs return `404`; invalid request bodies return `400`.
-
-## Project structure
-
-```text
-.
-├── index.js          # Express server, SQLite storage, CRUD routes
-├── openapi.json      # OpenAPI specification used by Swagger UI
-├── tasks.db          # SQLite database (auto-created, git-ignored)
-├── docs/             # Screenshots (Swagger UI, DB Browser)
-├── package.json      # Project metadata and npm scripts
-├── package-lock.json # Locked dependency versions
-├── .gitignore
-└── README.md
-```
-
-## Assignment completion checklist
-
-- [x] Stage 0 — `tasks.db` + `tasks` table created automatically, seeded once
-- [x] Stage 1 — `GET /tasks` and `GET /tasks/:id` read from SQLite
-- [x] Stage 2 — `POST /tasks` uses `INSERT`
-- [x] Stage 3 — `PUT` / `DELETE` use `UPDATE` / `DELETE`
-- [x] Stage 4 — explored SQL in DB Browser
-- [x] Stage 5 — README, screenshot, public repo
-- [x] Extras: SQL search/filter/stats, index, transaction
+**Verification boundary:** source inspection alone cannot prove live Docker operation. Check the linked workflow status and the actual database proof before marking this assignment fully tested.
