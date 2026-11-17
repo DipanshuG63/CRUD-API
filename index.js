@@ -1,16 +1,35 @@
-// Task API - Week 3 assignment (A2)
-// Same CRUD API as Week 2, but tasks are now stored in SQLite (tasks.db).
+// Task API - Week 3 (SQLite) + Week 4 assignment (A4): Supabase Auth, JWT verification, protected routes.
+
+require('dotenv').config({ quiet: true });
 
 const express = require('express');
+const { createClient } = require('@supabase/supabase-js');
 const swaggerUi = require('swagger-ui-express');
 const Database = require('better-sqlite3');
 const path = require('path');
 const openapi = require('./openapi.json');
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 app.use(express.json());
+
+/* ------------------------------------------------------------------ */
+/* Supabase Auth client (Identity Provider)                            */
+/* ------------------------------------------------------------------ */
+
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_KEY; // anon (public) key only
+
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error('Missing SUPABASE_URL or SUPABASE_KEY. Copy .env.example to .env and fill them in.');
+  process.exit(1);
+}
+
+// The server never keeps a login session of its own: every request carries its own token.
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+});
 
 /* ------------------------------------------------------------------ */
 /* Storage layer: SQLite                                               */
@@ -71,7 +90,11 @@ app.get('/', (req, res) => {
   res.json({
     name: 'Task API',
     version: '1.0',
-    endpoints: ['/tasks', '/tasks/:id', '/stats', '/reset', '/health', '/docs'],
+    endpoints: [
+      '/tasks', '/tasks/:id', '/stats', '/reset', '/health', '/docs',
+      '/auth/signup', '/auth/login', '/auth/logout',
+      '/public/info', '/protected/profile', '/protected/dashboard',
+    ],
   });
 });
 
@@ -221,6 +244,7 @@ app.post('/reset', (req, res) => {
   res.status(200).json(rows.map(toTask));
 });
 
+
 app.listen(port, () => {
-  console.log(`CRUD API listening on http://localhost:${port}`);
+  console.log(`Server running on http://localhost:${port} and connected to Supabase (${SUPABASE_URL})`);
 });

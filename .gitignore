@@ -151,3 +151,7 @@ tasks.db-shm
 # commit helper (not part of the project)
 stages/
 commit-stages.bat
+
+# A4 commit helper (not part of the project)
+stages-a4/
+commit-stages-a4.bat
