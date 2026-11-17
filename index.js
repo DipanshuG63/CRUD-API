@@ -244,6 +244,67 @@ app.post('/reset', (req, res) => {
   res.status(200).json(rows.map(toTask));
 });
 
+/* ------------------------------------------------------------------ */
+/* Auth routes                                                         */
+/* ------------------------------------------------------------------ */
+
+// Supabase network/server failures are not the client's fault -> 502, not 400/401.
+function isUpstreamError(error) {
+  return !error.status || error.status >= 500;
+}
+
+// ---- Stage 1: sign up & log in -------------------------------------
+
+function validCredentials(body) {
+  const { email, password } = body ?? {};
+  return typeof email === 'string' && email.trim() !== '' &&
+    typeof password === 'string' && password !== '';
+}
+
+app.post('/auth/signup', async (req, res) => {
+  if (!validCredentials(req.body)) {
+    return res.status(400).json({ error: 'email and password are required' });
+  }
+
+  const { email, password } = req.body;
+  const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
+
+  if (error) {
+    if (isUpstreamError(error)) {
+      return res.status(502).json({ error: 'Auth service unavailable' });
+    }
+    return res.status(400).json({ error: error.message });
+  }
+
+  res.status(201).json(data.user);
+});
+
+app.post('/auth/login', async (req, res) => {
+  if (!validCredentials(req.body)) {
+    return res.status(400).json({ error: 'email and password are required' });
+  }
+
+  const { email, password } = req.body;
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: email.trim(),
+    password,
+  });
+
+  if (error) {
+    if (isUpstreamError(error)) {
+      return res.status(502).json({ error: 'Auth service unavailable' });
+    }
+    return res.status(401).json({ error: 'Invalid login credentials' });
+  }
+
+  res.status(200).json({
+    access_token: data.session.access_token,
+    refresh_token: data.session.refresh_token,
+    expires_in: data.session.expires_in,
+    token_type: 'bearer',
+  });
+});
+
 
 app.listen(port, () => {
   console.log(`Server running on http://localhost:${port} and connected to Supabase (${SUPABASE_URL})`);
