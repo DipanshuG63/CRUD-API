@@ -3,7 +3,7 @@
   "info": {
     "title": "Task API",
     "version": "1.0",
-    "description": "CRUD API for tasks, stored in SQLite."
+    "description": "CRUD API for tasks, stored in PostgreSQL through Docker Compose."
   },
   "servers": [
     {
@@ -323,6 +323,10 @@
                   ],
                   "properties": {
                     "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "db": {
                       "type": "string",
                       "example": "ok"
                     }
