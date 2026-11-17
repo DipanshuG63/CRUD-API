@@ -1,0 +1,25 @@
+W4 QUICK FINISH - Windows, Node.js 22+
+=======================================
+The source code is already updated in GitHub:
+https://github.com/DipanshuG63/CRUD-API
+
+1. git clone https://github.com/DipanshuG63/CRUD-API.git
+2. cd CRUD-API
+3. npm ci
+4. copy .env.example .env
+5. In .env fill SUPABASE_URL and SUPABASE_KEY with your own Supabase
+   project URL and PUBLIC anon/publishable key.
+   NEVER use service_role or push your .env to GitHub.
+6. In Supabase Authentication settings, disable Confirm email
+   for this practice project, then run:
+       npm test
+       npm run test:smoke
+       npm run capture:swagger
+7. The last command creates docs/swagger-auth.png using actual Swagger UI.
+   Add it to GitHub:
+       git add docs/swagger-auth.png
+       git commit -m "W4: actual Swagger bearer-auth screenshot"
+       git push
+
+Supabase logout revokes refresh-token session; an existing access JWT
+may remain valid until it expires. Review README for details.
