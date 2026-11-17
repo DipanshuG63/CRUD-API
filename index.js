@@ -311,9 +311,9 @@ app.get('/public/info', (req, res) => {
   res.status(200).json({ message: 'Welcome stranger! This info is public.' });
 });
 
-// ---- Stage 2: protected route (token presence only, not verified yet) ----
+// ---- Stage 3: protected route with real token verification ----------
 
-app.get('/protected/profile', (req, res) => {
+app.get('/protected/profile', async (req, res) => {
   const header = req.headers.authorization ?? '';
   const match = /^Bearer\s+(\S+)$/i.exec(header);
 
@@ -321,7 +321,17 @@ app.get('/protected/profile', (req, res) => {
     return res.status(401).json({ error: 'Access token required' });
   }
 
-  res.status(200).json({ message: 'Token present (not verified yet)' });
+  const { data, error } = await supabase.auth.getUser(match[1]);
+
+  if (error || !data?.user) {
+    if (error && isUpstreamError(error)) {
+      return res.status(502).json({ error: 'Auth service unavailable' });
+    }
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+
+  const { id, email, created_at } = data.user;
+  res.status(200).json({ id, email, created_at });
 });
 
 
