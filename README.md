@@ -112,6 +112,24 @@ git push origin main
 
 `git check-ignore -v .env` should print the matching ignore rule. **`git ls-files .env` must print nothing.** If it ever prints `.env`, stop and untrack it using `git rm --cached .env` before pushing. Removing a secret from the newest commit does not remove it from Git history; rotate compromised credentials if they were ever published.
 
+## Password recovery (optional, for the existing Gmail account)
+
+This is **extra functionality** to help with the real-world recovery-link problem, not a mandatory A4 endpoint. The original Supabase password-reset email redirected to `http://localhost:3000/#error=...`; the old API returned JSON there, so no password form appeared.
+
+The API now serves a browser-friendly password recovery page at **<http://localhost:3000/reset-password>** and at `http://localhost:3000/` when visited in a normal browser (so Supabase's currently configured default Site URL works).
+
+1. Run `git pull origin main`, `npm ci` (if needed), and `npm start`.
+2. Open <http://localhost:3000/reset-password> in Chrome.
+3. Enter the **same existing Gmail** and click **Send password reset email**. No new account or Gmail alias is needed.
+4. Open the **newest** reset email promptly **once** while the local server is running. Supabase verifies the email and redirects to the browser password form.
+5. Set a new password on that form, then open <http://localhost:3000/docs> and try `POST /auth/login` with the same Gmail and new password. A successful login returns a JWT.
+
+The two extra endpoints are `POST /auth/password-reset-request` (request email) and `POST /auth/password-reset` (verified bearer token + new password). Passwords are only sent to Supabase for updating, not stored in the CRUD database. The browser removes recovery tokens from the URL without storing them.
+
+If the email redirects with `otp_expired`, request a **new** email from the page and open only its fresh link. Recovery links are short-lived/single-use and can sometimes be consumed by automated email scanning. The exact return URL is configured under **Supabase Dashboard → Authentication → URL Configuration**; the current practice project Site URL is `http://localhost:3000`. If you change that later, update it to the actual app URL.
+
+**Security:** Do not share screenshots containing passwords, reset links, raw JWTs, or refresh tokens. If a real password was visible in an earlier screenshot, replace it with a unique one.
+
 ## Previous assignments retained for continuity (A1–A3)
 
 This is intentionally the **same repository**, extended week by week. Earlier stages remain implemented but are not the focus of the A4 submission.
@@ -135,6 +153,7 @@ scripts/capture-swagger.js     Browser screenshot generator
 docs/swagger-auth.png          Token-free Swagger bearer padlock screenshot
 .github/workflows/             GitHub Actions automated verification
 package.json                   Dependencies and npm commands
+reset-password.html             Local password-recovery webpage (optional)
 README.md                      Assignment A4 documentation
 ```
 
