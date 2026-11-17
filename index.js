@@ -7,6 +7,7 @@ const { createClient } = require('@supabase/supabase-js');
 const swaggerUi = require('swagger-ui-express');
 const Database = require('better-sqlite3');
 const path = require('path');
+const fs = require('fs');
 const openapi = require('./openapi.json');
 
 const app = express();
@@ -88,13 +89,28 @@ function getRow(id) {
 // Swagger UI
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapi));
 
+// Supabase's configured Site URL already points to http://localhost:3000.
+// Recovery email links therefore land at "/" with a session in the URL fragment.
+// Show a password-reset UI for normal browsers; keep the JSON API root for curl.
+function sendRecoveryPage(req, res) {
+  res.set('Cache-Control', 'no-store');
+  res.set('Referrer-Policy', 'no-referrer');
+  return res.type('html').send(fs.readFileSync(path.join(__dirname, 'reset-password.html'), 'utf8'));
+}
+
+app.get('/reset-password', sendRecoveryPage);
+
 app.get('/', (req, res) => {
+  if ((req.headers.accept || '').includes('text/html')) {
+    return sendRecoveryPage(req, res);
+  }
   res.json({
     name: 'Task API',
     version: '1.0',
     endpoints: [
       '/tasks', '/tasks/:id', '/stats', '/reset', '/health', '/docs',
       '/auth/signup', '/auth/login', '/auth/logout',
+      '/auth/password-reset-request', '/auth/password-reset',
       '/public/info', '/protected/profile', '/protected/dashboard',
     ],
   });
@@ -318,6 +334,61 @@ app.post('/auth/login', async (req, res) => {
     expires_in: data.session.expires_in,
     token_type: 'bearer',
   });
+});
+
+// ---- Optional account recovery (not part of the five required A4 routes) --
+// Recovery emails use the Supabase Site URL (already localhost:3000 for this
+// practice project). Requesting the email must not disclose which users exist.
+app.post('/auth/password-reset-request', async (req, res) => {
+  const email = req.body?.email;
+  if (typeof email !== 'string' || !email.includes('@') || !email.trim()) {
+    return res.status(400).json({ error: 'A valid email is required' });
+  }
+  try {
+    const { error } = await authClient().auth.resetPasswordForEmail(email.trim());
+    if (error) {
+      if (error.status === 429) {
+        return res.status(429).json({ error: 'Please wait before requesting another reset email' });
+      }
+      return res.status(502).json({ error: 'Password reset email service unavailable' });
+    }
+    return res.status(202).json({ message: 'If that account exists, a password reset link will be sent' });
+  } catch {
+    return res.status(502).json({ error: 'Password reset email service unavailable' });
+  }
+});
+
+// Once the recovery link redirects the browser with an access JWT, the
+// existing guard verifies that JWT before any password is changed.
+app.post('/auth/password-reset', requireAuth, async (req, res) => {
+  const password = req.body?.password;
+  if (typeof password !== 'string' || password.length < 8) {
+    return res.status(400).json({ error: 'New password must have at least 8 characters' });
+  }
+  try {
+    const response = await fetch(new URL('/auth/v1/user', SUPABASE_URL), {
+      method: 'PUT',
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${req.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ password }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (response.ok) {
+      return res.status(200).json({ message: 'Password updated. Log in with the new password.' });
+    }
+    if (response.status === 401 || response.status === 403) {
+      return res.status(401).json({ error: 'Recovery link expired or invalid. Request a fresh email.' });
+    }
+    if (response.status === 400 || response.status === 422) {
+      return res.status(400).json({ error: 'Password not accepted. Choose a stronger new password.' });
+    }
+    return res.status(502).json({ error: 'Password reset service unavailable' });
+  } catch {
+    return res.status(502).json({ error: 'Password reset service unavailable' });
+  }
 });
 
 // ---- Stage 2: public route ------------------------------------------
