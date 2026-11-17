@@ -25,6 +25,10 @@ function setup(config={}) {
       if(config.offline) throw Error('offline');
       return {data:{user:{...user,email}},error:null};
     },
+    async resetPasswordForEmail(email) {
+      if(config.offline) throw Error('offline');
+      return {data:{},error:null};
+    },
     async signInWithPassword({password}) {
       if(config.offline) throw Error('offline');
       if(password==='bad') return {data:null,error:{status:400}};
@@ -118,4 +122,32 @@ test('secret env file is ignored',()=>{
  const ignore=fs.readFileSync(path.join(root,'.gitignore'),'utf8');
  assert.match(ignore,/^\.env$/m);
  assert.match(ignore,/^!\.env\.example$/m);
+});
+
+test('password reset email request validates and returns an enumeration-safe response',async()=>{
+ const a=setup();
+ assert.equal((await a.req('POST','/auth/password-reset-request',{email:'account@example.com'})).statusCode,202);
+ assert.equal((await a.req('POST','/auth/password-reset-request',{email:'bad'})).statusCode,400);
+ assert.equal((await setup({offline:true}).req('POST','/auth/password-reset-request',{email:'account@example.com'})).statusCode,502);
+});
+
+test('password change requires a verified bearer JWT and minimum password length',async()=>{
+ const a=setup();
+ assert.equal((await a.req('POST','/auth/password-reset',{password:'newGoodPassword#123'})).statusCode,401);
+ assert.equal((await a.req('POST','/auth/password-reset',{password:'newGoodPassword#123'},'Bearer forged.jwt.token')).statusCode,401);
+ assert.equal((await a.req('POST','/auth/password-reset',{password:'short'},'Bearer good.jwt.token')).statusCode,400);
+ const ok=await a.req('POST','/auth/password-reset',{password:'newGoodPassword#123'},'Bearer good.jwt.token');
+ assert.equal(ok.statusCode,200);
+ const authUpdate=a.out.find(x=>x.url.endsWith('/auth/v1/user'));
+ assert.ok(authUpdate,'should update the user through Supabase GoTrue');
+ assert.equal(authUpdate.init.method,'PUT');
+ assert.equal(authUpdate.init.headers.Authorization,'Bearer good.jwt.token');
+});
+
+test('browser recovery page handles implicit recovery fragment without storing it',()=>{
+ const html=fs.readFileSync(path.join(root,'reset-password.html'),'utf8');
+ assert.match(html,/location\.hash/);
+ assert.match(html,/history\.replaceState/);
+ assert.match(html,/auth\/password-reset-request/);
+ assert.match(html,/auth\/password-reset/);
 });
