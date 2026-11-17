@@ -27,9 +27,11 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 }
 
 // The server never keeps a login session of its own: every request carries its own token.
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-});
+function authClient() {
+  return createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+}
 
 /* ------------------------------------------------------------------ */
 /* Storage layer: SQLite                                               */
@@ -267,7 +269,12 @@ app.post('/auth/signup', async (req, res) => {
   }
 
   const { email, password } = req.body;
-  const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
+  let data, error;
+  try {
+    ({ data, error } = await authClient().auth.signUp({ email: email.trim(), password }));
+  } catch {
+    return res.status(502).json({ error: 'Auth service unavailable' });
+  }
 
   if (error) {
     if (isUpstreamError(error)) {
@@ -285,10 +292,15 @@ app.post('/auth/login', async (req, res) => {
   }
 
   const { email, password } = req.body;
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: email.trim(),
-    password,
-  });
+  let data, error;
+  try {
+    ({ data, error } = await authClient().auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    }));
+  } catch {
+    return res.status(502).json({ error: 'Auth service unavailable' });
+  }
 
   if (error) {
     if (isUpstreamError(error)) {
@@ -297,6 +309,9 @@ app.post('/auth/login', async (req, res) => {
     return res.status(401).json({ error: 'Invalid login credentials' });
   }
 
+  if (!data?.session?.access_token || !data?.session?.refresh_token) {
+    return res.status(401).json({ error: 'Login session unavailable; confirm your email if required' });
+  }
   res.status(200).json({
     access_token: data.session.access_token,
     refresh_token: data.session.refresh_token,
@@ -324,7 +339,7 @@ async function requireAuth(req, res, next) {
   const token = match[1];
 
   try {
-    const { data, error } = await supabase.auth.getUser(token);
+    const { data, error } = await authClient().auth.getUser(token);
 
     if (error || !data?.user) {
       if (error && isUpstreamError(error)) {
@@ -352,10 +367,19 @@ app.get('/protected/dashboard', requireAuth, (req, res) => {
 });
 
 app.post('/auth/logout', requireAuth, async (req, res) => {
-  // admin.signOut(jwt) revokes the session that belongs to this user's token.
-  const { error } = await supabase.auth.admin.signOut(req.token);
-
-  if (error) {
+  // The user's bearer token authorizes logout. Never use the service-role admin API.
+  try {
+    const response = await fetch(new URL('/auth/v1/logout?scope=local', SUPABASE_URL), {
+      method: 'POST',
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${req.token}` },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403)
+        return res.status(401).json({ error: 'Invalid or expired token' });
+      return res.status(502).json({ error: 'Auth service unavailable' });
+    }
+  } catch {
     return res.status(502).json({ error: 'Auth service unavailable' });
   }
 
@@ -363,6 +387,15 @@ app.post('/auth/logout', requireAuth, async (req, res) => {
 });
 
 
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    return res.status(400).json({ error: 'Invalid JSON request body' });
+  }
+  console.error('Request failed:', err.message);
+  return res.status(500).json({ error: 'Internal server error' });
+});
+
 app.listen(port, () => {
-  console.log(`Server running on http://localhost:${port} and connected to Supabase (${SUPABASE_URL})`);
+  console.log(`Server listening at http://localhost:${port}`);
+  console.log('Supabase configured; live connection checked on auth requests.');
 });
