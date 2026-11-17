@@ -4,9 +4,11 @@
   "description": "CRUD API for internship",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test test/*.test.js",
     "start": "node index.js",
-    "dev": "node --watch index.js"
+    "dev": "node --watch index.js",
+    "test:smoke": "node --env-file=.env test/live-smoke.js",
+    "capture:swagger": "node --env-file=.env scripts/capture-swagger.js"
   },
   "repository": {
     "type": "git",
@@ -24,5 +26,8 @@
     "dotenv": "^18.0.10",
     "express": "^5.2.1",
     "swagger-ui-express": "^5.0.1"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   }
 }
