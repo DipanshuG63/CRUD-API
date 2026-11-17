@@ -71,6 +71,25 @@ Content-Type: application/json; charset=utf-8
 
 The GitHub Actions evidence artifact includes the **real** curl -i output from the running containerized API.
 
+### Verified HTTP response from GitHub Actions
+
+Actual output from the running Dockerized API in [successful run #1](https://github.com/DipanshuG63/CRUD-API/actions/runs/44180409106), on 17 November 2026 (selected response headers shown):
+
+~~~http
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Content-Length: 198
+
+[{"id":1,"title":"Buy groceries","done":false},{"id":2,"title":"Walk the dog","done":true},{"id":3,"title":"Read a book","done":false},{"id":5,"title":"PERSISTENCE_TEST_1794951022163","done":false}]
+~~~
+
+**Live Postgres data proof** (a PNG render of the actual psql SELECT output, generated from the successful CI run; **not** a direct desktop screenshot):
+
+![Live PostgreSQL query output from CI](docs/postgres-proof.png)
+
+The same workflow confirmed the persistence task still existed after docker compose down and up.
+
+
 ## Full automated verification / persistence
 
 With Node.js 22+ locally, the following PowerShell commands test the full CRUD cycle and prove persistence:
