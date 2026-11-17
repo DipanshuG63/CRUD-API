@@ -1,0 +1,46 @@
+name: A3 PostgreSQL Docker Compose verification
+on:
+  push:
+    branches: [a3-docker-postgres]
+  workflow_dispatch:
+jobs:
+  compose-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Configure local-only development environment
+        run: cp .env.example .env
+      - name: Check no private environment file is tracked
+        run: |
+          ! git ls-files --error-unmatch .env
+          docker compose config --quiet
+      - name: Build and run application plus Postgres
+        run: docker compose up -d --build --wait
+      - name: Test complete CRUD and write persistence marker
+        run: node test/smoke.js --persist-file /tmp/a3-persist-id
+      - name: Stop both containers but keep the database volume
+        run: docker compose down
+      - name: Restart complete stack
+        run: docker compose up -d --wait
+      - name: Verify data remains in PostgreSQL
+        run: node test/smoke.js --verify-persisted "$(cat /tmp/a3-persist-id)"
+      - name: Capture real PostgreSQL query output
+        run: |
+          mkdir -p artifacts
+          docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT id, title, done FROM tasks ORDER BY id;"' | tee artifacts/postgres-query-output.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: a3-postgres-proof
+          path: artifacts/
+          if-no-files-found: ignore
+      - name: Print service logs if a check failed
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Clean up
+        if: always()
+        run: docker compose down
